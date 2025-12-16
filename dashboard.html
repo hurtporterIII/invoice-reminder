@@ -6,9 +6,16 @@
 </head>
 <body>
     <h1>Invoice Reminder</h1>
+    <div style="margin: 10px 0 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div style="color: #333; font-weight: 600;">Track invoices and stay on top of due dates.</div>
+        <button id="upgrade-button" type="button" style="padding: 8px 12px; border: 1px solid #1a73e8; background: #1a73e8; color: #fff; border-radius: 8px; cursor: pointer;">
+            Upgrade to Pro
+        </button>
+    </div>
 
     <section>
         <h2>Add Invoice</h2>
+        <p id="plan-message" style="margin: 6px 0 12px; color: #444; font-weight: 600;">Free plan: up to 3 invoices. Upgrade to Pro to unlock unlimited.</p>
         <form id="invoice-form">
             <div>
                 <label for="debtor-name">Debtor name</label><br>
@@ -34,8 +41,26 @@
 
     <section>
         <h2>Invoices</h2>
-        <p id="empty-state">No invoices yet.</p>
-        <ul id="invoice-list"></ul>
+        <div style="display: flex; gap: 12px; align-items: center; margin: 10px 0 14px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 600;">Filter:</span>
+                <select id="invoice-filter" style="padding: 6px 8px; border-radius: 6px; border: 1px solid #ccc;">
+                    <option value="all">All</option>
+                    <option value="today">Due today</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="future">Due in future</option>
+                </select>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 600;">Sort:</span>
+                <select id="invoice-sort" style="padding: 6px 8px; border-radius: 6px; border: 1px solid #ccc;">
+                    <option value="due">Due date (soonest first)</option>
+                    <option value="amount">Amount (highest first)</option>
+                </select>
+            </label>
+        </div>
+        <p id="empty-state" style="color: #444; margin: 10px 0;">No invoices yet. Add one above to get started.</p>
+        <ul id="invoice-list" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px;"></ul>
     </section>
 
     <nav style="margin-top: 30px;">
@@ -52,9 +77,21 @@
             const totalEl = document.getElementById("unpaid-total");
             const countEl = document.getElementById("invoice-count");
             const emptyState = document.getElementById("empty-state");
+            const filterControl = document.getElementById("invoice-filter");
+            const sortControl = document.getElementById("invoice-sort");
+            const planMessage = document.getElementById("plan-message");
+            const upgradeButton = document.getElementById("upgrade-button");
+            const freeInvoiceLimit = 3;
 
             let invoices = loadInvoices();
+            let editingId = null;
+            let activeFilter = "all";
+            let activeSort = "due";
             renderInvoices(invoices);
+
+            upgradeButton.addEventListener("click", () => {
+                window.location.href = "pricing.html";
+            });
 
             form.addEventListener("submit", (event) => {
                 event.preventDefault();
@@ -66,8 +103,14 @@
                     return;
                 }
 
+                if (!isProUser() && invoices.length >= freeInvoiceLimit) {
+                    updatePlanMessage();
+                    return;
+                }
+
                 const dueDate = new Date(`${dueDateInput}T00:00:00`);
                 const newInvoice = {
+                    id: generateId(),
                     name,
                     amount,
                     dueDate: dueDate.toISOString(),
@@ -80,6 +123,18 @@
                 form.reset();
             });
 
+            filterControl.addEventListener("change", (event) => {
+                activeFilter = event.target.value;
+                editingId = null;
+                renderInvoices(invoices);
+            });
+
+            sortControl.addEventListener("change", (event) => {
+                activeSort = event.target.value;
+                editingId = null;
+                renderInvoices(invoices);
+            });
+
             function loadInvoices() {
                 const stored = localStorage.getItem(storageKey);
                 if (!stored) {
@@ -88,7 +143,33 @@
 
                 try {
                     const parsed = JSON.parse(stored);
-                    return Array.isArray(parsed) ? parsed : [];
+                    if (!Array.isArray(parsed)) {
+                        return [];
+                    }
+
+                    let needsSave = false;
+                    const normalized = parsed
+                        .map((invoice) => {
+                            if (!invoice || typeof invoice !== "object") {
+                                return null;
+                            }
+
+                            const withId = { ...invoice };
+
+                            if (!withId.id) {
+                                withId.id = generateId();
+                                needsSave = true;
+                            }
+
+                            return withId;
+                        })
+                        .filter(Boolean);
+
+                    if (needsSave) {
+                        saveInvoices(normalized);
+                    }
+
+                    return normalized;
                 } catch (error) {
                     return [];
                 }
@@ -101,53 +182,256 @@
             function renderInvoices(listData) {
                 list.innerHTML = "";
 
+                const view = applyFilterAndSort(listData);
+                let total = 0;
+                updatePlanMessage();
+
                 if (listData.length === 0) {
-                    emptyState.textContent = "No invoices yet.";
+                    emptyState.textContent = "No invoices yet. Add one above to get started.";
+                    emptyState.style.display = "block";
+                    totalEl.textContent = "$0.00";
+                    countEl.textContent = "0";
+                    return;
+                }
+
+                if (view.length === 0) {
+                    emptyState.textContent = "No invoices match the selected filter.";
+                    emptyState.style.display = "block";
                     totalEl.textContent = "$0.00";
                     countEl.textContent = "0";
                     return;
                 }
 
                 emptyState.textContent = "";
+                emptyState.style.display = "none";
 
-                let total = 0;
-
-                listData.forEach((invoice) => {
+                view.forEach((invoice) => {
                     total += Number(invoice.amount) || 0;
 
                     const item = document.createElement("li");
+                    item.setAttribute(
+                        "style",
+                        "list-style: none; border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; background: #f9f9f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;"
+                    );
+
+                    const details = document.createElement("div");
+                    details.setAttribute("style", "display: flex; flex-direction: column; gap: 6px;");
 
                     const name = document.createElement("div");
                     name.textContent = invoice.name;
+                    name.setAttribute("style", "font-weight: 700; font-size: 16px; color: #222;");
 
                     const amount = document.createElement("div");
-                    amount.textContent = `Amount: $${Number(invoice.amount).toFixed(2)}`;
+                    amount.textContent = `$${Number(invoice.amount).toFixed(2)}`;
+                    amount.setAttribute("style", "font-weight: 600; color: #0a6e2a;");
 
                     const dueText = document.createElement("div");
                     dueText.textContent = `Due date: ${formatDate(invoice.dueDate)}`;
+                    dueText.setAttribute("style", "color: #444;");
 
-                    const status = document.createElement("div");
-                    status.textContent = `Status: ${calculateStatus(invoice.dueDate)}`;
+                    const statusText = calculateStatus(invoice.dueDate);
 
-                    item.appendChild(name);
-                    item.appendChild(amount);
-                    item.appendChild(dueText);
-                    item.appendChild(status);
+                    if (editingId === invoice.id) {
+                        const nameInput = document.createElement("input");
+                        nameInput.type = "text";
+                        nameInput.value = invoice.name;
+                        nameInput.setAttribute("style", "padding: 6px; border: 1px solid #ccc; border-radius: 6px;");
+
+                        const amountInput = document.createElement("input");
+                        amountInput.type = "number";
+                        amountInput.step = "0.01";
+                        amountInput.min = "0";
+                        amountInput.value = Number(invoice.amount).toFixed(2);
+                        amountInput.setAttribute("style", "padding: 6px; border: 1px solid #ccc; border-radius: 6px;");
+
+                        const dueInput = document.createElement("input");
+                        dueInput.type = "date";
+                        dueInput.value = formatDate(invoice.dueDate);
+                        dueInput.setAttribute("style", "padding: 6px; border: 1px solid #ccc; border-radius: 6px;");
+
+                        details.appendChild(nameInput);
+                        details.appendChild(amountInput);
+                        details.appendChild(dueInput);
+
+                        const actions = document.createElement("div");
+                        actions.setAttribute("style", "display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 160px;");
+
+                        const statusBadge = document.createElement("div");
+                        statusBadge.textContent = statusText;
+                        statusBadge.setAttribute(
+                            "style",
+                            "padding: 6px 8px; background: #fff3cd; border: 1px solid #ffe08a; border-radius: 6px; font-weight: 600; color: #8a6d1a; text-align: right; width: fit-content;"
+                        );
+
+                        const saveButton = document.createElement("button");
+                        saveButton.type = "button";
+                        saveButton.textContent = "Save";
+                        saveButton.setAttribute(
+                            "style",
+                            "padding: 6px 10px; border: 1px solid #0a6e2a; background: #0a6e2a; color: #fff; border-radius: 6px; cursor: pointer;"
+                        );
+                        saveButton.addEventListener("click", () => {
+                            const updatedName = nameInput.value.trim();
+                            const updatedAmount = parseFloat(amountInput.value);
+                            const updatedDue = dueInput.value;
+
+                            if (!updatedName || !updatedDue || Number.isNaN(updatedAmount)) {
+                                return;
+                            }
+
+                            invoices = invoices.map((entry) => {
+                                if (entry.id !== invoice.id) {
+                                    return entry;
+                                }
+
+                                return {
+                                    ...entry,
+                                    name: updatedName,
+                                    amount: updatedAmount,
+                                    dueDate: new Date(`${updatedDue}T00:00:00`).toISOString()
+                                };
+                            });
+
+                            saveInvoices(invoices);
+                            editingId = null;
+                            renderInvoices(invoices);
+                        });
+
+                        const cancelButton = document.createElement("button");
+                        cancelButton.type = "button";
+                        cancelButton.textContent = "Cancel";
+                        cancelButton.setAttribute(
+                            "style",
+                            "padding: 6px 10px; border: 1px solid #555; background: #fff; color: #555; border-radius: 6px; cursor: pointer;"
+                        );
+                        cancelButton.addEventListener("click", () => {
+                            editingId = null;
+                            renderInvoices(invoices);
+                        });
+
+                        actions.appendChild(statusBadge);
+                        actions.appendChild(saveButton);
+                        actions.appendChild(cancelButton);
+
+                        item.appendChild(details);
+                        item.appendChild(actions);
+                    } else {
+                        details.appendChild(name);
+                        details.appendChild(amount);
+                        details.appendChild(dueText);
+
+                        const actions = document.createElement("div");
+                        actions.setAttribute("style", "display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 160px;");
+
+                        const statusBadge = document.createElement("div");
+                        statusBadge.textContent = statusText;
+                        statusBadge.setAttribute(
+                            "style",
+                            "padding: 6px 8px; background: #fff3cd; border: 1px solid #ffe08a; border-radius: 6px; font-weight: 600; color: #8a6d1a; text-align: right; width: fit-content;"
+                        );
+
+                        const editButton = document.createElement("button");
+                        editButton.type = "button";
+                        editButton.textContent = "Edit";
+                        editButton.setAttribute(
+                            "style",
+                            "padding: 6px 10px; border: 1px solid #1a73e8; background: #fff; color: #1a73e8; border-radius: 6px; cursor: pointer;"
+                        );
+                        editButton.addEventListener("click", () => {
+                            editingId = invoice.id;
+                            renderInvoices(invoices);
+                        });
+
+                        const deleteButton = document.createElement("button");
+                        deleteButton.type = "button";
+                        deleteButton.textContent = "Delete";
+                        deleteButton.setAttribute(
+                            "style",
+                            "padding: 6px 10px; border: 1px solid #c53030; background: #fff; color: #c53030; border-radius: 6px; cursor: pointer;"
+                        );
+                        deleteButton.addEventListener("click", () => {
+                            invoices = invoices.filter((entry) => entry.id !== invoice.id);
+                            saveInvoices(invoices);
+                            if (editingId === invoice.id) {
+                                editingId = null;
+                            }
+                            renderInvoices(invoices);
+                        });
+
+                        actions.appendChild(statusBadge);
+                        actions.appendChild(editButton);
+                        actions.appendChild(deleteButton);
+
+                        item.appendChild(details);
+                        item.appendChild(actions);
+                    }
 
                     list.appendChild(item);
                 });
 
                 totalEl.textContent = `$${total.toFixed(2)}`;
-                countEl.textContent = `${listData.length}`;
+                countEl.textContent = `${view.length}`;
+            }
+
+            function generateId() {
+                return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            }
+
+            function applyFilterAndSort(listData) {
+                const filtered = listData.filter((invoice) => {
+                    const delta = calculateDayDelta(invoice.dueDate);
+
+                    if (activeFilter === "today") {
+                        return delta === 0;
+                    }
+
+                    if (activeFilter === "overdue") {
+                        return delta < 0;
+                    }
+
+                    if (activeFilter === "future") {
+                        return delta > 0;
+                    }
+
+                    return true;
+                });
+
+                const sorted = [...filtered];
+
+                if (activeSort === "due") {
+                    sorted.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+                } else if (activeSort === "amount") {
+                    sorted.sort((a, b) => Number(b.amount) - Number(a.amount));
+                }
+
+                return sorted;
+            }
+
+            function isProUser() {
+                return localStorage.getItem("isPro") === "true";
+            }
+
+            function updatePlanMessage() {
+                if (!planMessage) {
+                    return;
+                }
+
+                if (isProUser()) {
+                    planMessage.textContent = "Pro active: unlimited invoices enabled.";
+                    planMessage.style.color = "#0a6e2a";
+                    return;
+                }
+
+                const limitReached = invoices.length >= freeInvoiceLimit;
+                const note = limitReached
+                    ? "Free plan limit reached. Delete an invoice or upgrade to add more."
+                    : `Free plan: up to ${freeInvoiceLimit} invoices. Upgrade to Pro to unlock unlimited.`;
+                planMessage.textContent = `${note} (Set localStorage isPro=\"true\" to simulate Pro.)`;
+                planMessage.style.color = limitReached ? "#c53030" : "#444";
             }
 
             function calculateStatus(dueDateValue) {
-                const today = new Date();
-                const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                const dueDate = new Date(dueDateValue);
-                const dueStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
-                const msPerDay = 24 * 60 * 60 * 1000;
-                const delta = Math.round((dueStart - todayStart) / msPerDay);
+                const delta = calculateDayDelta(dueDateValue);
 
                 if (delta === 0) {
                     return "Due today";
@@ -160,6 +444,15 @@
 
                 const overdueDays = Math.abs(delta);
                 return `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`;
+            }
+
+            function calculateDayDelta(dueDateValue) {
+                const today = new Date();
+                const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const dueDate = new Date(dueDateValue);
+                const dueStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+                const msPerDay = 24 * 60 * 60 * 1000;
+                return Math.round((dueStart - todayStart) / msPerDay);
             }
 
             function formatDate(dateValue) {

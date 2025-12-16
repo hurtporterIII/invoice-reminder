@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice Reminder Pricing</title>
+</head>
+<body style="font-family: Arial, sans-serif; margin: 20px;">
+    <h1>Invoice Reminder</h1>
+    <p style="color: #444; margin-bottom: 20px;">Choose a plan. Stripe checkout will plug in here later.</p>
+
+    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+        <div style="border: 1px solid #ddd; border-radius: 10px; padding: 16px; min-width: 240px; background: #f9f9f9;">
+            <h2 style="margin-top: 0;">Free Plan</h2>
+            <ul style="padding-left: 18px; color: #333;">
+                <li>Up to 3 invoices</li>
+                <li>Local reminders only</li>
+                <li>Single-device access</li>
+            </ul>
+        </div>
+        <div style="border: 1px solid #1a73e8; border-radius: 10px; padding: 16px; min-width: 240px; background: #e8f0fe;">
+            <h2 style="margin-top: 0;">Pro Plan</h2>
+            <ul style="padding-left: 18px; color: #0f172a;">
+                <li>Unlimited invoices</li>
+                <li>Future email reminders</li>
+                <li>Cross-device access</li>
+            </ul>
+            <button type="button" onclick="startCheckout()" style="padding: 10px 14px; border: 1px solid #1a73e8; background: #1a73e8; color: #fff; border-radius: 8px; cursor: pointer; font-weight: 700;">
+                Buy Pro
+            </button>
+        </div>
+    </div>
+
+    <div style="margin-top: 24px;">
+        <a href="dashboard.html" style="color: #1a73e8;">Back to dashboard</a>
+    </div>
+
+    <script>
+        function startCheckout() {
+            alert("Stripe checkout will be connected here.");
+        }
+    </script>
+</body>
+</html>
