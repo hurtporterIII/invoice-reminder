@@ -6,7 +6,7 @@
 </head>
 <body style="font-family: Arial, sans-serif; margin: 20px;">
     <h1>Invoice Reminder</h1>
-    <p style="color: #444; margin-bottom: 20px;">Choose a plan. Stripe checkout will plug in here later.</p>
+    <p style="color: #444; margin-bottom: 20px;">Choose a plan. Stripe Checkout will open in test mode.</p>
 
     <div style="display: flex; gap: 16px; flex-wrap: wrap;">
         <div style="border: 1px solid #ddd; border-radius: 10px; padding: 16px; min-width: 240px; background: #f9f9f9;">
@@ -35,8 +35,19 @@
     </div>
 
     <script>
-        function startCheckout() {
-            alert("Stripe checkout will be connected here.");
+        async function startCheckout() {
+            try {
+                const response = await fetch("/api/create-checkout-session", { method: "POST" });
+                if (!response.ok) {
+                    throw new Error("Failed to start checkout");
+                }
+                const data = await response.json();
+                if (data && data.url) {
+                    window.location.href = data.url;
+                }
+            } catch (error) {
+                console.error("Checkout error", error);
+            }
         }
     </script>
 </body>

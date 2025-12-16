@@ -11,6 +11,9 @@
         <button id="upgrade-button" type="button" style="padding: 8px 12px; border: 1px solid #1a73e8; background: #1a73e8; color: #fff; border-radius: 8px; cursor: pointer;">
             Upgrade to Pro
         </button>
+        <button id="pay-button" type="button" style="padding: 8px 12px; border: 1px solid #0a6e2a; background: #0a6e2a; color: #fff; border-radius: 8px; cursor: pointer;">
+            Buy Pro (Stripe)
+        </button>
     </div>
 
     <section>
@@ -81,6 +84,7 @@
             const sortControl = document.getElementById("invoice-sort");
             const planMessage = document.getElementById("plan-message");
             const upgradeButton = document.getElementById("upgrade-button");
+            const payButton = document.getElementById("pay-button");
             const freeInvoiceLimit = 3;
 
             let invoices = loadInvoices();
@@ -92,6 +96,12 @@
             upgradeButton.addEventListener("click", () => {
                 window.location.href = "pricing.html";
             });
+
+            if (payButton) {
+                payButton.addEventListener("click", () => {
+                    startCheckout();
+                });
+            }
 
             form.addEventListener("submit", (event) => {
                 event.preventDefault();
@@ -453,6 +463,22 @@
                 const dueStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
                 const msPerDay = 24 * 60 * 60 * 1000;
                 return Math.round((dueStart - todayStart) / msPerDay);
+            }
+
+            async function startCheckout() {
+                try {
+                    const response = await fetch("/api/create-checkout-session", { method: "POST" });
+                    if (!response.ok) {
+                        throw new Error("Failed to start checkout");
+                    }
+
+                    const data = await response.json();
+                    if (data && data.url) {
+                        window.location.href = data.url;
+                    }
+                } catch (error) {
+                    console.error("Checkout error", error);
+                }
             }
 
             function formatDate(dateValue) {

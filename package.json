@@ -1,0 +1,8 @@
+{
+  "name": "invoice-reminder",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "stripe": "^12.16.0"
+  }
+}
