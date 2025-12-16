@@ -1,19 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice Reminder Dashboard</title>
+</head>
 <body>
     <h1>Invoice Reminder</h1>
 
     <section>
+        <h2>Add Invoice</h2>
+        <form id="invoice-form">
+            <div>
+                <label for="debtor-name">Debtor name</label><br>
+                <input id="debtor-name" name="name" type="text" required>
+            </div>
+            <div>
+                <label for="amount-owed">Amount owed</label><br>
+                <input id="amount-owed" name="amount" type="number" step="0.01" min="0" required>
+            </div>
+            <div>
+                <label for="due-date">Due date</label><br>
+                <input id="due-date" name="dueDate" type="date" required>
+            </div>
+            <button type="submit">Add Invoice</button>
+        </form>
+    </section>
+
+    <section>
         <h2>Overview</h2>
-        <p><strong>Unpaid total:</strong> $0.00</p>
+        <p><strong>Unpaid total:</strong> <span id="unpaid-total">$0.00</span></p>
+        <p><strong>Invoices:</strong> <span id="invoice-count">0</span></p>
     </section>
 
     <section>
-        <h2>Unpaid invoices</h2>
-        <p>No invoices yet.</p>
-    </section>
-
-    <section>
-        <h2>Actions</h2>
-        <button>Add invoice</button>
+        <h2>Invoices</h2>
+        <p id="empty-state">No invoices yet.</p>
+        <ul id="invoice-list"></ul>
     </section>
 
     <nav style="margin-top: 30px;">
@@ -21,4 +43,133 @@
         |
         <a href="login.html">Log out</a>
     </nav>
+
+    <script>
+        (() => {
+            const storageKey = "invoices";
+            const form = document.getElementById("invoice-form");
+            const list = document.getElementById("invoice-list");
+            const totalEl = document.getElementById("unpaid-total");
+            const countEl = document.getElementById("invoice-count");
+            const emptyState = document.getElementById("empty-state");
+
+            let invoices = loadInvoices();
+            renderInvoices(invoices);
+
+            form.addEventListener("submit", (event) => {
+                event.preventDefault();
+                const name = form.elements.name.value.trim();
+                const amount = parseFloat(form.elements.amount.value);
+                const dueDateInput = form.elements.dueDate.value;
+
+                if (!name || !dueDateInput || Number.isNaN(amount)) {
+                    return;
+                }
+
+                const dueDate = new Date(`${dueDateInput}T00:00:00`);
+                const newInvoice = {
+                    name,
+                    amount,
+                    dueDate: dueDate.toISOString(),
+                    createdAt: new Date().toISOString()
+                };
+
+                invoices.push(newInvoice);
+                saveInvoices(invoices);
+                renderInvoices(invoices);
+                form.reset();
+            });
+
+            function loadInvoices() {
+                const stored = localStorage.getItem(storageKey);
+                if (!stored) {
+                    return [];
+                }
+
+                try {
+                    const parsed = JSON.parse(stored);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (error) {
+                    return [];
+                }
+            }
+
+            function saveInvoices(listData) {
+                localStorage.setItem(storageKey, JSON.stringify(listData));
+            }
+
+            function renderInvoices(listData) {
+                list.innerHTML = "";
+
+                if (listData.length === 0) {
+                    emptyState.textContent = "No invoices yet.";
+                    totalEl.textContent = "$0.00";
+                    countEl.textContent = "0";
+                    return;
+                }
+
+                emptyState.textContent = "";
+
+                let total = 0;
+
+                listData.forEach((invoice) => {
+                    total += Number(invoice.amount) || 0;
+
+                    const item = document.createElement("li");
+
+                    const name = document.createElement("div");
+                    name.textContent = invoice.name;
+
+                    const amount = document.createElement("div");
+                    amount.textContent = `Amount: $${Number(invoice.amount).toFixed(2)}`;
+
+                    const dueText = document.createElement("div");
+                    dueText.textContent = `Due date: ${formatDate(invoice.dueDate)}`;
+
+                    const status = document.createElement("div");
+                    status.textContent = `Status: ${calculateStatus(invoice.dueDate)}`;
+
+                    item.appendChild(name);
+                    item.appendChild(amount);
+                    item.appendChild(dueText);
+                    item.appendChild(status);
+
+                    list.appendChild(item);
+                });
+
+                totalEl.textContent = `$${total.toFixed(2)}`;
+                countEl.textContent = `${listData.length}`;
+            }
+
+            function calculateStatus(dueDateValue) {
+                const today = new Date();
+                const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const dueDate = new Date(dueDateValue);
+                const dueStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+                const msPerDay = 24 * 60 * 60 * 1000;
+                const delta = Math.round((dueStart - todayStart) / msPerDay);
+
+                if (delta === 0) {
+                    return "Due today";
+                }
+
+                if (delta > 0) {
+                    const days = delta;
+                    return `Due in ${days} day${days === 1 ? "" : "s"}`;
+                }
+
+                const overdueDays = Math.abs(delta);
+                return `Overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`;
+            }
+
+            function formatDate(dateValue) {
+                const date = new Date(dateValue);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, "0");
+                const day = String(date.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+            }
+        })();
+    </script>
 </body>
+</html>
